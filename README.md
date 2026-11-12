@@ -8,7 +8,7 @@ Agendly è una web app PWA mobile-first per gestire l'agenda personale: eventi, 
 | Livello | Tecnologia |
 | --- | --- |
 | Frontend | React 18 + TypeScript, Vite 5, React Router, Tailwind CSS |
-| Backend | Firebase Authentication, Cloud Firestore, Cloud Messaging, Cloud Functions (Node 20) |
+| Backend | Firebase Authentication, Cloud Firestore, Cloud Messaging, Cloud Functions (Node 22) |
 | PWA | `vite-plugin-pwa` (Workbox, strategia `injectManifest`) |
 | Hosting | Firebase Hosting |
 | Date/fusi | `date-fns` + `date-fns-tz` (IANA, default `Europe/Rome`, ora legale gestita) |
@@ -65,7 +65,7 @@ Ogni utente può leggere/scrivere **solo** i documenti sotto `users/{suo uid}`; 
 
 ## Requisiti
 
-- Node.js 20+ e npm
+- Node.js 22+ e npm
 - Firebase CLI: `npm i -g firebase-tools` (poi `firebase login`)
 - Java 21+ (solo per gli emulatori e i test)
 - Un progetto Firebase sul **piano Blaze** se vuoi le push con app chiusa (la Cloud Function schedulata lo richiede; per uso personale resta nella quota gratuita)
