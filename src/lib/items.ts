@@ -102,7 +102,14 @@ export async function createItem(uid: string, input: ItemInput, timezone: string
   return ref.id;
 }
 
-export async function updateItem(uid: string, item: Item, input: ItemInput): Promise<void> {
+/** Completare una voce ricorrente la sposta alla prossima occorrenza invece di chiuderla. */
+function advanceIfRecurringCompleted(input: ItemInput): ItemInput {
+  if (input.recurrence === 'none' || input.status !== 'completato') return input;
+  return { ...input, date: nextOccurrenceDate(input.date, input.recurrence), status: 'da_fare' };
+}
+
+export async function updateItem(uid: string, item: Item, rawInput: ItemInput): Promise<void> {
+  const input = advanceIfRecurringCompleted(rawInput);
   const wasCompleted = item.status === 'completato';
   const isCompleted = input.status === 'completato';
   await commit(
@@ -137,21 +144,19 @@ export function toInput(item: Item): ItemInput {
  * avanza alla data successiva. Restituisce la nuova data se la voce è stata spostata.
  */
 export async function completeItem(uid: string, item: Item): Promise<string | null> {
-  if (item.recurrence !== 'none') {
-    const next = nextOccurrenceDate(item.date, item.recurrence);
-    await updateItem(uid, item, { ...toInput(item), date: next, status: 'da_fare' });
-    return next;
-  }
   await updateItem(uid, item, { ...toInput(item), status: 'completato' });
-  return null;
+  return item.recurrence !== 'none' ? nextOccurrenceDate(item.date, item.recurrence) : null;
 }
 
 export async function reopenItem(uid: string, item: Item): Promise<void> {
   await updateItem(uid, item, { ...toInput(item), status: 'da_fare' });
 }
 
-export async function setItemStatus(uid: string, item: Item, status: Status): Promise<void> {
+/** Restituisce la data della prossima occorrenza se una voce ricorrente è stata completata. */
+export async function setItemStatus(uid: string, item: Item, status: Status): Promise<string | null> {
+  if (status === 'completato') return completeItem(uid, item);
   await updateItem(uid, item, { ...toInput(item), status });
+  return null;
 }
 
 export async function moveItem(uid: string, item: Item, date: string): Promise<void> {

@@ -18,7 +18,7 @@ import { deleteItem, setItemStatus } from '../lib/items';
 import { errorMessage } from '../lib/errors';
 import { CATEGORY_LABELS, RECURRENCE_LABELS, STATUSES, STATUS_LABELS, TYPE_LABELS, reminderLabel } from '../lib/labels';
 import { isOverdue } from '../lib/selectors';
-import { capitalize, formatDateKey, formatInTz } from '../lib/time';
+import { capitalize, formatDateKey, formatInTz, relativeDayLabel } from '../lib/time';
 import type { ReactNode } from 'react';
 import type { Status } from '../lib/types';
 
@@ -61,8 +61,8 @@ export default function ItemDetailPage() {
   const changeStatus = async (s: Status) => {
     if (!user) return;
     try {
-      await setItemStatus(user.uid, item, s);
-      toast.success(`Stato: ${STATUS_LABELS[s]}`);
+      const next = await setItemStatus(user.uid, item, s);
+      toast.success(next ? `Completato. Prossima volta: ${relativeDayLabel(next, timezone).toLowerCase()}` : `Stato: ${STATUS_LABELS[s]}`);
     } catch (e) {
       toast.error(errorMessage(e));
     }
