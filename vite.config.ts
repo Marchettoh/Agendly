@@ -16,6 +16,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'logo/*.svg'],
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,webmanifest}'],
+        globIgnores: ['splash/**', 'icons/mstile-*'],
       },
       manifest: {
         id: '/',
@@ -32,8 +33,12 @@ export default defineConfig({
         background_color: '#F8FAFC',
         categories: ['productivity'],
         icons: [
+          ...[48, 72, 96, 128, 144].map((s) => ({ src: `/icons/icon-${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any' })),
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-256.png', sizes: '256x256', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-384.png', sizes: '384x384', type: 'image/png', purpose: 'any' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
           { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
