@@ -5,7 +5,7 @@ import { PRIORITY_STYLES, PriorityBadge } from './ui/Badges';
 import { CategoryIcon } from './CategoryIcon';
 import { CATEGORY_LABELS, TYPE_LABELS } from '../lib/labels';
 import { isOverdue } from '../lib/selectors';
-import { relativeDayLabel } from '../lib/time';
+import { formatInTz, relativeDayLabel } from '../lib/time';
 import type { Occurrence } from '../lib/types';
 
 interface ItemCardProps {
@@ -51,7 +51,7 @@ export function ItemCard({ occurrence, timezone, onToggle, onMove, showDate, bus
         <div className="flex items-start justify-between gap-2">
           <p className={clsx('font-semibold leading-snug text-ink dark:text-slate-100', done && 'line-through')}>{item.title}</p>
           {item.time && (
-            <span className={clsx('shrink-0 text-sm font-semibold tabular-nums', overdue ? 'text-warning' : 'text-brand-dark dark:text-blue-300')}>{item.time}</span>
+            <span className={clsx('shrink-0 text-sm font-semibold tabular-nums', overdue ? 'text-warning' : 'text-brand-dark dark:text-blue-300')}>{formatInTz(occurrence.startAt, timezone, 'HH:mm')}</span>
           )}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
