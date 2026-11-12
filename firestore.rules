@@ -1,0 +1,79 @@
+rules_version = '2';
+
+// Agendly: ogni utente può leggere e scrivere esclusivamente i propri documenti
+// sotto /users/{uid}. Tutto il resto è negato.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isNullOrTimestamp(v) {
+      return v == null || v is timestamp;
+    }
+
+    function validProfile(d) {
+      return d.keys().hasOnly(['displayName', 'email', 'timezone', 'notificationsEnabled', 'theme', 'createdAt', 'updatedAt'])
+        && (!('displayName' in d) || (d.displayName is string && d.displayName.size() <= 80))
+        && (!('email' in d) || (d.email is string && d.email.size() <= 254))
+        && (!('timezone' in d) || (d.timezone is string && d.timezone.size() > 0 && d.timezone.size() <= 64))
+        && (!('notificationsEnabled' in d) || d.notificationsEnabled is bool)
+        && (!('theme' in d) || d.theme in ['system', 'light', 'dark']);
+    }
+
+    function validItem(d) {
+      return d.keys().hasOnly([
+          'type', 'title', 'description', 'date', 'time', 'timezone', 'startAt', 'category', 'priority',
+          'status', 'reminderMinutes', 'remindAt', 'recurrence', 'completedAt', 'createdAt', 'updatedAt'
+        ])
+        && d.keys().hasAll(['type', 'title', 'date', 'timezone', 'startAt', 'category', 'priority', 'status', 'recurrence'])
+        && d.type in ['evento', 'attivita', 'promemoria']
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 140
+        && (!('description' in d) || (d.description is string && d.description.size() <= 2000))
+        && d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && (!('time' in d) || d.time == null || (d.time is string && d.time.matches('^[0-2][0-9]:[0-5][0-9]$')))
+        && d.timezone is string && d.timezone.size() > 0 && d.timezone.size() <= 64
+        && d.startAt is timestamp
+        && d.category in ['lavoro', 'personale', 'famiglia', 'acquisti', 'salute', 'altro']
+        && d.priority in ['bassa', 'media', 'alta', 'urgente']
+        && d.status in ['da_fare', 'in_corso', 'completato', 'rinviato']
+        && d.recurrence in ['none', 'daily', 'weekly', 'monthly']
+        && (!('reminderMinutes' in d) || d.reminderMinutes == null
+            || (d.reminderMinutes is int && d.reminderMinutes > 0 && d.reminderMinutes <= 525600))
+        && (!('remindAt' in d) || isNullOrTimestamp(d.remindAt))
+        && (!('completedAt' in d) || isNullOrTimestamp(d.completedAt));
+    }
+
+    match /users/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create, update: if isOwner(uid) && validProfile(request.resource.data);
+      allow delete: if isOwner(uid);
+
+      match /items/{itemId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && validItem(request.resource.data);
+        allow update: if isOwner(uid) && validItem(request.resource.data)
+          && request.resource.data.get('createdAt', null) == resource.data.get('createdAt', null);
+        allow delete: if isOwner(uid);
+      }
+
+      match /fcmTokens/{tokenId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['token', 'userAgent', 'createdAt', 'lastSeenAt'])
+          && request.resource.data.token == tokenId
+          && request.resource.data.token is string && request.resource.data.token.size() < 1024;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
