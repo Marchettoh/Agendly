@@ -5,10 +5,9 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { PageLoader } from '../components/ui/Spinner';
 import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
 import { useToast } from '../contexts/ToastContext';
 import { usePushStateWithRefresh } from '../hooks/usePushState';
-import { disablePush, enablePush, isIOS, isStandalone, showLocalNotification } from '../lib/messaging';
+import { disablePush, enablePush, hasDeviceToken, isIOS, isStandalone, showLocalNotification } from '../lib/messaging';
 import { updateProfile } from '../lib/profile';
 import { errorMessage } from '../lib/errors';
 
@@ -22,11 +21,10 @@ export function PushStatusPill({ state, enabled }: { state: string | null; enabl
 
 export default function NotificationsPage() {
   const { user } = useAuth();
-  const { profile } = useData();
   const toast = useToast();
   const [state, refresh] = usePushStateWithRefresh();
   const [busy, setBusy] = useState(false);
-  const enabled = !!profile?.notificationsEnabled;
+  const [enabled, setEnabled] = useState(() => !!user && hasDeviceToken(user.uid));
   const iosNeedsInstall = isIOS() && !isStandalone();
 
   const enable = async () => {
@@ -35,7 +33,8 @@ export default function NotificationsPage() {
     try {
       const result = await enablePush(user.uid);
       if (result === 'granted') {
-        await updateProfile(user.uid, { notificationsEnabled: true });
+        setEnabled(true);
+        await updateProfile(user.uid, { notificationsEnabled: true }).catch(console.error);
         toast.success('Notifiche attivate');
       } else if (result === 'denied') toast.error('Permesso negato. Segui le istruzioni qui sotto per riattivarle.');
       else if (result === 'unsupported') toast.error('Questo browser non supporta le notifiche push.');
@@ -52,7 +51,7 @@ export default function NotificationsPage() {
     setBusy(true);
     try {
       await disablePush(user.uid);
-      await updateProfile(user.uid, { notificationsEnabled: false });
+      setEnabled(false);
       toast.show('Notifiche disattivate su questo dispositivo');
     } catch (e) {
       toast.error(errorMessage(e));

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useNow } from './useNow';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { useToast } from '../contexts/ToastContext';
@@ -25,9 +26,11 @@ export function useReminderWatcher() {
   const { items, timezone } = useData();
   const toast = useToast();
   const navigate = useNavigate();
+  // Riprogramma periodicamente: i promemoria oltre le 24 ore vengono armati quando si avvicinano.
+  const tick = useNow(15 * 60_000);
 
   useEffect(() => {
-    const now = Date.now();
+    const now = tick.getTime();
     const timers = items
       .filter((i) => i.remindAt && i.remindAt.getTime() > now && i.remindAt.getTime() - now < MAX_TIMEOUT && i.remindAt.getTime() - now < 86_400_000)
       .map((i) =>
@@ -41,7 +44,7 @@ export function useReminderWatcher() {
         }, i.remindAt!.getTime() - now),
       );
     return () => timers.forEach(clearTimeout);
-  }, [items, timezone, toast, navigate]);
+  }, [items, timezone, toast, navigate, tick]);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;

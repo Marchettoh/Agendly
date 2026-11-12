@@ -15,6 +15,7 @@ import { useToast } from '../contexts/ToastContext';
 import { usePushState } from '../hooks/usePushState';
 import { useInstallPrompt } from '../hooks/useInstallPrompt';
 import { updateProfile } from '../lib/profile';
+import { hasDeviceToken } from '../lib/messaging';
 import { errorMessage } from '../lib/errors';
 import { COMMON_TIMEZONES, detectTimezone, formatInTz } from '../lib/time';
 import type { ThemePref } from '../lib/types';
@@ -105,7 +106,7 @@ export default function SettingsPage() {
             <p className="font-medium text-ink dark:text-slate-100">Notifiche push</p>
             <p className="text-sm text-slate-500">Gestisci permessi e prova le notifiche</p>
           </div>
-          <PushStatusPill state={push} enabled={!!profile?.notificationsEnabled} />
+          <PushStatusPill state={push} enabled={!!user && hasDeviceToken(user.uid)} />
           <ChevronRight className="h-5 w-5 text-slate-400" />
         </Card>
       </Link>

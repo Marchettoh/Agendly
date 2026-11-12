@@ -31,10 +31,25 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+/** Utente connesso nell'app (scritto da setPushSession in src/lib/messaging.ts). */
+async function sessionUid(): Promise<string | null> {
+  const res = await (await caches.open('agendly-session')).match('/__agendly_session');
+  return res ? res.text() : null;
+}
+
 if (firebaseConfig.apiKey && firebaseConfig.messagingSenderId) {
   const messaging = getMessaging(initializeApp(firebaseConfig));
-  onBackgroundMessage(messaging, (payload) => {
+  onBackgroundMessage(messaging, async (payload) => {
     const d = payload.data ?? {};
+    if (d.uid && d.uid !== (await sessionUid())) {
+      return self.registration.showNotification('Agendly', {
+        body: 'Hai un promemoria. Accedi per vederlo.',
+        tag: d.tag,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/badge-96.png',
+        data: { url: '/' },
+      });
+    }
     const urgent = d.urgent === 'true';
     const options: NotificationOptions & { actions?: { action: string; title: string }[]; renotify?: boolean; requireInteraction?: boolean; vibrate?: number[] } = {
       body: d.body ?? '',

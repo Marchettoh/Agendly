@@ -28,7 +28,25 @@ async function swRegistration(): Promise<ServiceWorkerRegistration> {
   return navigator.serviceWorker.ready;
 }
 
-const tokenKey = 'agendly.fcmToken';
+const tokenKey = (uid: string) => `agendly.fcmToken.${uid}`;
+const SESSION_CACHE = 'agendly-session';
+const SESSION_URL = '/__agendly_session';
+
+/** Questo dispositivo ha un token push registrato per l'utente? */
+export function hasDeviceToken(uid: string): boolean {
+  return !!localStorage.getItem(tokenKey(uid));
+}
+
+/**
+ * Comunica al service worker l'utente attualmente connesso: le push destinate a un altro
+ * utente (es. token non revocato dopo un logout offline) vengono mostrate senza contenuti privati.
+ */
+export async function setPushSession(uid: string | null): Promise<void> {
+  if (!('caches' in window)) return;
+  const cache = await caches.open(SESSION_CACHE);
+  if (uid) await cache.put(SESSION_URL, new Response(uid));
+  else await cache.delete(SESSION_URL);
+}
 
 /** Chiede il permesso, ottiene il token FCM e lo salva in users/{uid}/fcmTokens/{token}. */
 export async function enablePush(uid: string): Promise<PushState> {
@@ -45,18 +63,18 @@ export async function enablePush(uid: string): Promise<PushState> {
     createdAt: serverTimestamp(),
     lastSeenAt: serverTimestamp(),
   });
-  localStorage.setItem(tokenKey, token);
+  localStorage.setItem(tokenKey(uid), token);
   return 'granted';
 }
 
 export async function disablePush(uid: string): Promise<void> {
-  const token = localStorage.getItem(tokenKey);
+  const token = localStorage.getItem(tokenKey(uid));
   if (await pushSupported()) {
     await deleteToken(getMessaging(getFirebase().app)).catch(() => undefined);
   }
   if (token) {
     await deleteDoc(doc(getFirebase().db, 'users', uid, 'fcmTokens', token)).catch(() => undefined);
-    localStorage.removeItem(tokenKey);
+    localStorage.removeItem(tokenKey(uid));
   }
 }
 

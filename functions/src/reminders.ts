@@ -18,6 +18,7 @@ interface ItemData {
   reminderMinutes: number | null;
   remindAt: Timestamp | null;
   recurrence: Recurrence;
+  anchorDate?: string;
 }
 
 // Deve restare allineato a src/lib/items.ts e src/lib/time.ts dell'app web.
@@ -25,7 +26,6 @@ const DEFAULT_REMINDER_TIME = '09:00';
 const INVALID_TOKEN_CODES = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token',
-  'messaging/invalid-argument',
 ]);
 
 function nextOccurrenceDate(dateKey: string, recurrence: Recurrence, step: number): string {
@@ -43,8 +43,10 @@ function reminderInstant(date: string, time: string | null, tz: string, minutes:
 /** Prossima occorrenza (data + istante del promemoria) successiva a `after`. */
 export function nextReminder(item: ItemData, after: Date): { date: string; at: Date } | null {
   if (item.reminderMinutes == null || item.status === 'completato') return null;
-  for (let i = 0; i < 1000; i++) {
-    const date = i === 0 ? item.date : nextOccurrenceDate(item.date, item.recurrence, i);
+  const anchor = item.anchorDate ?? item.date;
+  for (let step = 0; step < 5000; step++) {
+    const date = item.recurrence === 'none' ? item.date : nextOccurrenceDate(anchor, item.recurrence, step);
+    if (date < item.date) continue;
     const at = reminderInstant(date, item.time, item.timezone, item.reminderMinutes);
     if (at.getTime() > after.getTime()) return { date, at };
     if (item.recurrence === 'none') return null;
@@ -59,7 +61,7 @@ function occurrenceFor(item: ItemData, remindAt: Date): { date: string; start: D
   return { date, start: fromZonedTime(`${date}T${item.time ?? '00:00'}:00`, item.timezone) };
 }
 
-export function buildMessage(id: string, item: ItemData, remindAt: Date) {
+export function buildMessage(id: string, item: ItemData, remindAt: Date, uid = '') {
   const { start } = occurrenceFor(item, remindAt);
   const tz = item.timezone;
   const when = item.time
@@ -70,6 +72,7 @@ export function buildMessage(id: string, item: ItemData, remindAt: Date) {
     title: urgent ? `URGENTE · ${item.title}` : item.title,
     body: `${item.description ? `${item.description.slice(0, 80)}\n` : ''}${when}`,
     itemId: id,
+    uid,
     tag: `${id}-${remindAt.getTime()}`,
     urgent: String(urgent),
     time: String(start.getTime()),
@@ -81,41 +84,48 @@ async function processOne(db: Firestore, messaging: Messaging, snap: QueryDocume
   const userRef = snap.ref.parent.parent;
   if (!userRef || !item.remindAt) return { sent: 0 };
   const remindAt = item.remindAt.toDate();
-  const next = nextReminder(item, now);
-  const nextRemindAt = item.recurrence === 'none' ? null : next ? next.at : null;
+  const nextRemindAt = item.recurrence === 'none' ? null : (nextReminder(item, now)?.at ?? null);
 
-  let sent = 0;
-  // I promemoria scaduti da più di 6 ore (es. dopo un'interruzione) non vengono inviati.
-  const stale = now.getTime() - remindAt.getTime() > 6 * 3_600_000;
-  if (item.status !== 'completato' && !stale) {
-    const tokensSnap = await userRef.collection('fcmTokens').get();
-    const tokens = tokensSnap.docs.map((d) => d.id);
-    if (tokens.length) {
-      const data = buildMessage(snap.id, item, remindAt);
-      const res = await messaging.sendEachForMulticast({
-        tokens,
-        data,
-        webpush: {
-          headers: { Urgency: data.urgent === 'true' ? 'high' : 'normal', TTL: '86400' },
-          fcmOptions: { link: `/voce/${snap.id}` },
-        },
-      });
-      sent = res.successCount;
-      const invalid = res.responses
-        .map((r, i) => (!r.success && r.error && INVALID_TOKEN_CODES.has(r.error.code) ? tokens[i] : null))
-        .filter((t): t is string => t !== null);
-      await Promise.all(invalid.map((t) => userRef.collection('fcmTokens').doc(t).delete()));
-    }
-  }
-
-  // Aggiorna solo se nel frattempo il documento non è stato modificato dall'utente.
-  await db.runTransaction(async (tx) => {
+  // Prenota l'occorrenza prima di inviare: un'esecuzione concorrente non la ritrova più scaduta.
+  const claimed = await db.runTransaction(async (tx) => {
     const fresh = await tx.get(snap.ref);
     const current = fresh.get('remindAt') as Timestamp | null | undefined;
-    if (!fresh.exists || !current || current.toMillis() !== remindAt.getTime()) return;
+    if (!fresh.exists || !current || current.toMillis() !== remindAt.getTime()) return false;
     tx.update(snap.ref, { remindAt: nextRemindAt });
+    return true;
   });
-  return { sent };
+  if (!claimed) return { sent: 0 };
+
+  // I promemoria scaduti da più di 6 ore (es. dopo un'interruzione) non vengono inviati.
+  const stale = now.getTime() - remindAt.getTime() > 6 * 3_600_000;
+  if (item.status === 'completato' || stale) return { sent: 0 };
+
+  const tokensSnap = await userRef.collection('fcmTokens').get();
+  const tokens = tokensSnap.docs.map((d) => d.id);
+  if (!tokens.length) return { sent: 0 };
+
+  const data = buildMessage(snap.id, item, remindAt, userRef.id);
+  let res: Awaited<ReturnType<Messaging['sendEachForMulticast']>>;
+  try {
+    res = await messaging.sendEachForMulticast({
+      tokens,
+      data,
+      webpush: { headers: { Urgency: data.urgent === 'true' ? 'high' : 'normal', TTL: '86400' } },
+    });
+  } catch (e) {
+    // Invio non riuscito: ripristina il promemoria così verrà ritentato al prossimo giro.
+    await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(snap.ref);
+      const current = (fresh.get('remindAt') as Timestamp | null | undefined)?.toMillis() ?? null;
+      if (fresh.exists && current === (nextRemindAt?.getTime() ?? null)) tx.update(snap.ref, { remindAt: item.remindAt });
+    });
+    throw e;
+  }
+  const invalid = res.responses
+    .map((r, i) => (!r.success && r.error && INVALID_TOKEN_CODES.has(r.error.code) ? tokens[i] : null))
+    .filter((t): t is string => t !== null);
+  await Promise.all(invalid.map((t) => userRef.collection('fcmTokens').doc(t).delete()));
+  return { sent: res.successCount };
 }
 
 /** Invia le notifiche dei promemoria scaduti e programma le ricorrenze successive. */

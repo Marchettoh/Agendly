@@ -19,7 +19,7 @@ export function sortOccurrences(a: Occurrence, b: Occurrence): number {
 export function expandOccurrences(items: Item[], from: string, to: string): Occurrence[] {
   const out: Occurrence[] = [];
   for (const item of items) {
-    const dates = occurrencesInRange(item.date, item.recurrence, from, to);
+    const dates = occurrencesInRange(item.date, item.recurrence, from, to, item.anchorDate ?? item.date);
     for (const date of dates) {
       out.push({
         item,

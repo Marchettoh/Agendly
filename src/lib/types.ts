@@ -27,6 +27,8 @@ export interface ItemDoc {
   /** Prossimo istante in cui inviare la notifica push, null se nessuna in sospeso */
   remindAt: Timestamp | null;
   recurrence: Recurrence;
+  /** Data della prima occorrenza della serie, base per calcolare le ricorrenze */
+  anchorDate?: string;
   completedAt: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;

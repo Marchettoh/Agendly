@@ -65,22 +65,34 @@ export function nextOccurrenceDate(dateKey: string, recurrence: Recurrence, step
   }
 }
 
-/** Date delle occorrenze di una ricorrenza comprese in [from, to] (YYYY-MM-DD inclusi). */
-export function occurrencesInRange(base: string, recurrence: Recurrence, from: string, to: string): string[] {
+/**
+ * Date delle occorrenze in [from, to] (YYYY-MM-DD inclusi), non precedenti a `base`.
+ * Le occorrenze sono calcolate dalla data di ancoraggio, così il 31 del mese non slitta al 28.
+ */
+export function occurrencesInRange(base: string, recurrence: Recurrence, from: string, to: string, anchor = base): string[] {
   if (recurrence === 'none') return base >= from && base <= to ? [base] : [];
   const out: string[] = [];
-  let step = 0;
-  let current = base;
-  if (recurrence === 'daily' && base < from) {
-    step = diffDaysKey(from, base);
-    current = nextOccurrenceDate(base, recurrence, step);
-  }
-  while (current <= to && out.length < 400) {
-    if (current >= from) out.push(current);
+  const start = base > from ? base : from;
+  let step = recurrence === 'daily' ? Math.max(0, diffDaysKey(start, anchor)) : 0;
+  let current = nextOccurrenceDate(anchor, recurrence, step);
+  for (let guard = 0; current <= to && out.length < 400 && guard < 10_000; guard++) {
+    if (current >= start) out.push(current);
     step += 1;
-    current = nextOccurrenceDate(base, recurrence, step);
+    current = nextOccurrenceDate(anchor, recurrence, step);
   }
   return out;
+}
+
+/** Prossima occorrenza dopo `current` e non prima di `minDate` (le occorrenze perse vengono saltate). */
+export function nextRecurringDate(anchor: string, current: string, recurrence: Recurrence, minDate: string): string {
+  if (recurrence === 'none') return current;
+  const floor = current > minDate ? current : minDate;
+  let step = recurrence === 'daily' ? Math.max(1, diffDaysKey(floor, anchor)) : 1;
+  for (let guard = 0; guard < 10_000; guard++, step++) {
+    const d = nextOccurrenceDate(anchor, recurrence, step);
+    if (d > current && d >= minDate) return d;
+  }
+  return nextOccurrenceDate(current, recurrence);
 }
 
 /** Formatta una data YYYY-MM-DD in italiano, es. "lunedì 3 marzo". */

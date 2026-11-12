@@ -29,7 +29,7 @@ service cloud.firestore {
     function validItem(d) {
       return d.keys().hasOnly([
           'type', 'title', 'description', 'date', 'time', 'timezone', 'startAt', 'category', 'priority',
-          'status', 'reminderMinutes', 'remindAt', 'recurrence', 'completedAt', 'createdAt', 'updatedAt'
+          'status', 'reminderMinutes', 'remindAt', 'recurrence', 'anchorDate', 'completedAt', 'createdAt', 'updatedAt'
         ])
         && d.keys().hasAll(['type', 'title', 'date', 'timezone', 'startAt', 'category', 'priority', 'status', 'recurrence'])
         && d.type in ['evento', 'attivita', 'promemoria']
@@ -43,6 +43,7 @@ service cloud.firestore {
         && d.priority in ['bassa', 'media', 'alta', 'urgente']
         && d.status in ['da_fare', 'in_corso', 'completato', 'rinviato']
         && d.recurrence in ['none', 'daily', 'weekly', 'monthly']
+        && (!('anchorDate' in d) || (d.anchorDate is string && d.anchorDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
         && (!('reminderMinutes' in d) || d.reminderMinutes == null
             || (d.reminderMinutes is int && d.reminderMinutes > 0 && d.reminderMinutes <= 525600))
         && (!('remindAt' in d) || isNullOrTimestamp(d.remindAt))

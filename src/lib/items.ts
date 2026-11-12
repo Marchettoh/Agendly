@@ -14,7 +14,7 @@ import {
   type DocumentSnapshot,
 } from 'firebase/firestore';
 import { getFirebase } from './firebase';
-import { DEFAULT_REMINDER_TIME, nextOccurrenceDate, zonedToUtc } from './time';
+import { DEFAULT_REMINDER_TIME, nextOccurrenceDate, nextRecurringDate, todayKey, zonedToUtc } from './time';
 import type { Item, ItemDoc, ItemInput, Recurrence, Status } from './types';
 
 const itemsCol = (uid: string) => collection(getFirebase().db, 'users', uid, 'items');
@@ -39,23 +39,32 @@ export function reminderInstant(date: string, time: string | null, tz: string, m
 
 /** Prossimo istante futuro in cui inviare il promemoria (considera le ricorrenze). */
 export function computeRemindAt(
-  fields: { date: string; time: string | null; timezone: string; reminderMinutes: number | null; recurrence: Recurrence; status: Status },
+  fields: {
+    date: string;
+    anchorDate?: string;
+    time: string | null;
+    timezone: string;
+    reminderMinutes: number | null;
+    recurrence: Recurrence;
+    status: Status;
+  },
   now = new Date(),
 ): Date | null {
   if (fields.reminderMinutes === null || fields.status === 'completato') return null;
-  let date = fields.date;
-  for (let i = 0; i < 1000; i++) {
+  const anchor = fields.anchorDate ?? fields.date;
+  for (let step = 0; step < 5000; step++) {
+    const date = fields.recurrence === 'none' ? fields.date : nextOccurrenceDate(anchor, fields.recurrence, step);
+    if (date < fields.date) continue;
     const at = reminderInstant(date, fields.time, fields.timezone, fields.reminderMinutes);
     if (at.getTime() > now.getTime()) return at;
     if (fields.recurrence === 'none') return null;
-    date = nextOccurrenceDate(fields.date, fields.recurrence, i + 1);
   }
   return null;
 }
 
-function derived(input: Pick<ItemInput, 'date' | 'time' | 'reminderMinutes' | 'recurrence' | 'status'>, timezone: string) {
+function derived(input: Pick<ItemInput, 'date' | 'time' | 'reminderMinutes' | 'recurrence' | 'status'>, timezone: string, anchorDate: string) {
   const startAt = zonedToUtc(input.date, input.time, timezone);
-  const remindAt = computeRemindAt({ ...input, timezone });
+  const remindAt = computeRemindAt({ ...input, anchorDate, timezone });
   return {
     startAt: Timestamp.fromDate(startAt),
     remindAt: remindAt ? Timestamp.fromDate(remindAt) : null,
@@ -86,14 +95,17 @@ export function subscribeItems(uid: string, onData: (items: Item[]) => void, onE
   );
 }
 
-export async function createItem(uid: string, input: ItemInput, timezone: string): Promise<string> {
+export async function createItem(uid: string, rawInput: ItemInput, timezone: string): Promise<string> {
   const ref = doc(itemsCol(uid));
+  const anchorDate = rawInput.date;
+  const input = advanceIfRecurringCompleted(rawInput, anchorDate, timezone);
   const data = {
     ...input,
+    anchorDate,
     title: input.title.trim(),
     description: input.description.trim(),
     timezone,
-    ...derived(input, timezone),
+    ...derived(input, timezone, anchorDate),
     completedAt: input.status === 'completato' ? serverTimestamp() : null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -103,21 +115,24 @@ export async function createItem(uid: string, input: ItemInput, timezone: string
 }
 
 /** Completare una voce ricorrente la sposta alla prossima occorrenza invece di chiuderla. */
-function advanceIfRecurringCompleted(input: ItemInput): ItemInput {
+function advanceIfRecurringCompleted(input: ItemInput, anchorDate: string, timezone: string): ItemInput {
   if (input.recurrence === 'none' || input.status !== 'completato') return input;
-  return { ...input, date: nextOccurrenceDate(input.date, input.recurrence), status: 'da_fare' };
+  return { ...input, date: nextRecurringDate(anchorDate, input.date, input.recurrence, todayKey(timezone)), status: 'da_fare' };
 }
 
 export async function updateItem(uid: string, item: Item, rawInput: ItemInput): Promise<void> {
-  const input = advanceIfRecurringCompleted(rawInput);
+  const seriesChanged = rawInput.date !== item.date || rawInput.recurrence !== item.recurrence;
+  const anchorDate = seriesChanged ? rawInput.date : (item.anchorDate ?? item.date);
+  const input = advanceIfRecurringCompleted(rawInput, anchorDate, item.timezone);
   const wasCompleted = item.status === 'completato';
   const isCompleted = input.status === 'completato';
   await commit(
     updateDoc(itemRef(uid, item.id), {
       ...input,
+      anchorDate,
       title: input.title.trim(),
       description: input.description.trim(),
-      ...derived(input, item.timezone),
+      ...derived(input, item.timezone, anchorDate),
       completedAt: isCompleted ? (wasCompleted ? item.completedAt : serverTimestamp()) : null,
       updatedAt: serverTimestamp(),
     }),
@@ -145,7 +160,7 @@ export function toInput(item: Item): ItemInput {
  */
 export async function completeItem(uid: string, item: Item): Promise<string | null> {
   await updateItem(uid, item, { ...toInput(item), status: 'completato' });
-  return item.recurrence !== 'none' ? nextOccurrenceDate(item.date, item.recurrence) : null;
+  return item.recurrence !== 'none' ? nextRecurringDate(item.anchorDate ?? item.date, item.date, item.recurrence, todayKey(item.timezone)) : null;
 }
 
 export async function reopenItem(uid: string, item: Item): Promise<void> {
