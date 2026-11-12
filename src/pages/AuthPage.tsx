@@ -66,6 +66,7 @@ export default function AuthPage() {
 
   const reset = async () => {
     if (!email) return setError('Inserisci la tua email per reimpostare la password.');
+    setError(null);
     setLoading('reset');
     try {
       await resetPassword(email);
