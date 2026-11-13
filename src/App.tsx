@@ -21,6 +21,8 @@ const RemindersPage = lazy(() => import('./pages/RemindersPage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const AgendasPage = lazy(() => import('./pages/AgendasPage'));
+const JoinAgendaPage = lazy(() => import('./pages/JoinAgendaPage'));
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -65,6 +67,8 @@ export default function App() {
                   <Route path="promemoria" element={<RemindersPage />} />
                   <Route path="notifiche" element={<NotificationsPage />} />
                   <Route path="impostazioni" element={<SettingsPage />} />
+                  <Route path="agende" element={<AgendasPage />} />
+                  <Route path="unisciti/:code" element={<JoinAgendaPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Routes>

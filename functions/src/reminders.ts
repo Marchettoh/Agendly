@@ -19,6 +19,9 @@ interface ItemData {
   remindAt: Timestamp | null;
   recurrence: Recurrence;
   anchorDate?: string;
+  endDate?: string | null;
+  endTime?: string | null;
+  endAt?: Timestamp | null;
 }
 
 // Deve restare allineato a src/lib/items.ts e src/lib/time.ts dell'app web.
@@ -61,16 +64,23 @@ function occurrenceFor(item: ItemData, remindAt: Date): { date: string; start: D
   return { date, start: fromZonedTime(`${date}T${item.time ?? '00:00'}:00`, item.timezone) };
 }
 
-export function buildMessage(id: string, item: ItemData, remindAt: Date, uid = '') {
+/** Notifica: "Agendly" come titolo, sotto nome dell'impegno, orario, agenda e descrizione. */
+export function buildMessage(id: string, item: ItemData, remindAt: Date, uid = '', agendaName?: string) {
   const { start } = occurrenceFor(item, remindAt);
   const tz = item.timezone;
-  const when = item.time
-    ? formatInTimeZone(start, tz, "EEEE d MMMM 'alle' HH:mm", { locale: it })
-    : `${formatInTimeZone(start, tz, 'EEEE d MMMM', { locale: it })} (in giornata)`;
+  const fmt = (d: Date, pattern: string) => formatInTimeZone(d, tz, pattern, { locale: it });
+  let when = item.time ? fmt(start, 'EEEE d MMMM, HH:mm') : `${fmt(start, 'EEEE d MMMM')} (in giornata)`;
+  if (item.endAt && item.startAt) {
+    const end = new Date(item.endAt.toMillis() + (start.getTime() - item.startAt.toMillis()));
+    if (item.endDate) when += ` → ${fmt(end, item.endTime ? 'EEEE d MMMM, HH:mm' : 'EEEE d MMMM')}`;
+    else if (item.endTime) when += `–${fmt(end, 'HH:mm')}`;
+  }
+  when = when.charAt(0).toUpperCase() + when.slice(1);
   const urgent = item.priority === 'urgente';
   return {
-    title: urgent ? `URGENTE · ${item.title}` : item.title,
-    body: `${item.description ? `${item.description.slice(0, 80)}\n` : ''}${when}`,
+    title: urgent ? 'Agendly · Urgente' : 'Agendly',
+    body: [item.title, when, agendaName ? `Agenda: ${agendaName}` : '', item.description?.slice(0, 120) ?? ''].filter(Boolean).join('\n'),
+    itemTitle: item.title,
     itemId: id,
     uid,
     tag: `${id}-${remindAt.getTime()}`,
@@ -81,8 +91,8 @@ export function buildMessage(id: string, item: ItemData, remindAt: Date, uid = '
 
 async function processOne(db: Firestore, messaging: Messaging, snap: QueryDocumentSnapshot, now: Date) {
   const item = snap.data() as ItemData;
-  const userRef = snap.ref.parent.parent;
-  if (!userRef || !item.remindAt) return { sent: 0 };
+  const parent = snap.ref.parent.parent;
+  if (!parent || !item.remindAt) return { sent: 0 };
   const remindAt = item.remindAt.toDate();
   const nextRemindAt = item.recurrence === 'none' ? null : (nextReminder(item, now)?.at ?? null);
 
@@ -100,32 +110,54 @@ async function processOne(db: Firestore, messaging: Messaging, snap: QueryDocume
   const stale = now.getTime() - remindAt.getTime() > 6 * 3_600_000;
   if (item.status === 'completato' || stale) return { sent: 0 };
 
-  const tokensSnap = await userRef.collection('fcmTokens').get();
-  const tokens = tokensSnap.docs.map((d) => d.id);
-  if (!tokens.length) return { sent: 0 };
+  // Voci personali: solo il proprietario. Agende condivise: tutti i membri.
+  let recipients = [parent.id];
+  let agendaName: string | undefined;
+  if (parent.parent.id === 'agendas') {
+    const agenda = await parent.get();
+    recipients = (agenda.get('members') as string[] | undefined) ?? [];
+    agendaName = agenda.get('name') as string | undefined;
+  }
 
-  const data = buildMessage(snap.id, item, remindAt, userRef.id);
-  let res: Awaited<ReturnType<Messaging['sendEachForMulticast']>>;
-  try {
-    res = await messaging.sendEachForMulticast({
-      tokens,
-      data,
-      webpush: { headers: { Urgency: data.urgent === 'true' ? 'high' : 'normal', TTL: '86400' } },
-    });
-  } catch (e) {
+  let sent = 0;
+  let attempts = 0;
+  let failures = 0;
+  let lastError: unknown;
+  for (const uid of recipients) {
+    const userRef = db.collection('users').doc(uid);
+    const tokens = (await userRef.collection('fcmTokens').get()).docs.map((d) => d.id);
+    if (!tokens.length) continue;
+    attempts++;
+    const data = buildMessage(snap.id, item, remindAt, uid, agendaName);
+    let res: Awaited<ReturnType<Messaging['sendEachForMulticast']>>;
+    try {
+      res = await messaging.sendEachForMulticast({
+        tokens,
+        data,
+        webpush: { headers: { Urgency: data.urgent === 'true' ? 'high' : 'normal', TTL: '86400' } },
+      });
+    } catch (e) {
+      failures++;
+      lastError = e;
+      continue;
+    }
+    const invalid = res.responses
+      .map((r, i) => (!r.success && r.error && INVALID_TOKEN_CODES.has(r.error.code) ? tokens[i] : null))
+      .filter((t): t is string => t !== null);
+    await Promise.all(invalid.map((t) => userRef.collection('fcmTokens').doc(t).delete()));
+    sent += res.successCount;
+  }
+
+  if (attempts > 0 && failures === attempts) {
     // Invio non riuscito: ripristina il promemoria così verrà ritentato al prossimo giro.
     await db.runTransaction(async (tx) => {
       const fresh = await tx.get(snap.ref);
       const current = (fresh.get('remindAt') as Timestamp | null | undefined)?.toMillis() ?? null;
       if (fresh.exists && current === (nextRemindAt?.getTime() ?? null)) tx.update(snap.ref, { remindAt: item.remindAt });
     });
-    throw e;
+    throw lastError;
   }
-  const invalid = res.responses
-    .map((r, i) => (!r.success && r.error && INVALID_TOKEN_CODES.has(r.error.code) ? tokens[i] : null))
-    .filter((t): t is string => t !== null);
-  await Promise.all(invalid.map((t) => userRef.collection('fcmTokens').doc(t).delete()));
-  return { sent: res.successCount };
+  return { sent };
 }
 
 /** Invia le notifiche dei promemoria scaduti e programma le ricorrenze successive. */

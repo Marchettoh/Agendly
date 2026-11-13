@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Bell, CalendarClock, Check, Repeat } from 'lucide-react';
+import { Bell, CalendarClock, Check, Repeat, Users } from 'lucide-react';
 import clsx from 'clsx';
 import { PRIORITY_STYLES, PriorityBadge } from './ui/Badges';
 import { CategoryIcon } from './CategoryIcon';
 import { CATEGORY_LABELS, TYPE_LABELS } from '../lib/labels';
-import { isOverdue } from '../lib/selectors';
+import { isOverdue, occurrenceEnd } from '../lib/selectors';
+import { useData } from '../contexts/DataContext';
 import { formatInTz, relativeDayLabel } from '../lib/time';
 import type { Occurrence } from '../lib/types';
 
@@ -23,6 +24,13 @@ export function ItemCard({ occurrence, timezone, onToggle, onMove, showDate, bus
   const overdue = !isRecurringInstance && isOverdue(item, timezone);
   const canToggle = item.type !== 'evento' || item.status !== 'completato';
   const toggleable = !isRecurringInstance && onToggle;
+  const { agendaName } = useData();
+  const sharedName = agendaName(item.agendaId);
+  const end = occurrenceEnd(occurrence);
+  const start = item.time ? formatInTz(occurrence.startAt, timezone, 'HH:mm') : null;
+  const sameDayEnd = end && !item.endDate && item.endTime ? formatInTz(end, timezone, 'HH:mm') : null;
+  const timeLabel = occurrence.continued ? 'In corso' : start ? (sameDayEnd ? `${start}–${sameDayEnd}` : start) : null;
+  const untilLabel = end && item.endDate ? `fino a ${formatInTz(end, timezone, item.endTime ? 'EEE d MMM HH:mm' : 'EEE d MMM')}` : null;
 
   return (
     <div
@@ -50,11 +58,17 @@ export function ItemCard({ occurrence, timezone, onToggle, onMove, showDate, bus
       <Link to={`/voce/${item.id}`} className="min-w-0 flex-1 focus:outline-none">
         <div className="flex items-start justify-between gap-2">
           <p className={clsx('font-semibold leading-snug text-ink dark:text-slate-100', done && 'line-through')}>{item.title}</p>
-          {item.time && (
-            <span className={clsx('shrink-0 text-sm font-semibold tabular-nums', overdue ? 'text-warning' : 'text-brand-dark dark:text-blue-300')}>{formatInTz(occurrence.startAt, timezone, 'HH:mm')}</span>
+          {timeLabel && (
+            <span className={clsx('shrink-0 text-sm font-semibold tabular-nums', overdue ? 'text-warning' : 'text-brand-dark dark:text-blue-300')}>{timeLabel}</span>
           )}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+          {sharedName && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand-light px-2 py-0.5 font-semibold text-brand dark:bg-blue-500/15 dark:text-blue-300">
+              <Users className="h-3 w-3" />
+              {sharedName}
+            </span>
+          )}
           {item.priority !== 'bassa' && item.priority !== 'media' ? <PriorityBadge priority={item.priority} /> : null}
           <span className="inline-flex items-center gap-1">
             <CategoryIcon category={item.category} className="h-3.5 w-3.5" />
@@ -62,6 +76,7 @@ export function ItemCard({ occurrence, timezone, onToggle, onMove, showDate, bus
           </span>
           <span>{TYPE_LABELS[item.type]}</span>
           {showDate && <span className="font-medium">{relativeDayLabel(date, timezone)}</span>}
+          {untilLabel && <span className="font-medium">{untilLabel}</span>}
           {overdue && <span className="font-semibold text-warning">In ritardo</span>}
           {item.reminderMinutes !== null && <Bell className="h-3.5 w-3.5" aria-label="Promemoria attivo" />}
           {item.recurrence !== 'none' && <Repeat className="h-3.5 w-3.5" aria-label="Ricorrente" />}

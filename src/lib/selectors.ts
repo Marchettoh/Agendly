@@ -1,4 +1,4 @@
-import { addDaysKey, occurrencesInRange, startOfWeekKey, todayKey, zonedToUtc } from './time';
+import { addDaysKey, diffDaysKey, occurrencesInRange, startOfWeekKey, todayKey, zonedToUtc } from './time';
 import type { Item, Occurrence } from './types';
 
 export const URGENT_WINDOW_HOURS = 24;
@@ -19,17 +19,28 @@ export function sortOccurrences(a: Occurrence, b: Occurrence): number {
 export function expandOccurrences(items: Item[], from: string, to: string): Occurrence[] {
   const out: Occurrence[] = [];
   for (const item of items) {
-    const dates = occurrencesInRange(item.date, item.recurrence, from, to, item.anchorDate ?? item.date);
+    const span = spanDays(item);
+    const dates = occurrencesInRange(item.date, item.recurrence, span ? addDaysKey(from, -span) : from, to, item.anchorDate ?? item.date);
     for (const date of dates) {
-      out.push({
-        item,
-        date,
-        startAt: date === item.date ? item.startAt : zonedToUtc(date, item.time, item.timezone),
-        isRecurringInstance: date !== item.date,
-      });
+      const startAt = date === item.date ? item.startAt : zonedToUtc(date, item.time, item.timezone);
+      for (let k = 0; k <= span; k++) {
+        const day = k ? addDaysKey(date, k) : date;
+        if (day < from || day > to) continue;
+        out.push({ item, date: day, startAt, isRecurringInstance: date !== item.date, continued: k > 0 });
+      }
     }
   }
   return out.sort(sortOccurrences);
+}
+
+/** Giorni aggiuntivi coperti da un impegno su più giorni (massimo 31). */
+export function spanDays(item: Item): number {
+  return item.endDate ? Math.min(31, Math.max(0, diffDaysKey(item.endDate, item.date))) : 0;
+}
+
+/** Fine dell'occorrenza (stessa durata della voce originale). */
+export function occurrenceEnd(o: Occurrence): Date | null {
+  return o.item.endAt ? new Date(o.item.endAt.getTime() + (o.startAt.getTime() - o.item.startAt.getTime())) : null;
 }
 
 export const isDone = (item: Item) => item.status === 'completato';

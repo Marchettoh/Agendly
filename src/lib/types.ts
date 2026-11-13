@@ -29,14 +29,24 @@ export interface ItemDoc {
   recurrence: Recurrence;
   /** Data della prima occorrenza della serie, base per calcolare le ricorrenze */
   anchorDate?: string;
+  /** Fine facoltativa: endDate solo se diversa da date (più giorni), endTime nello stesso fuso */
+  endDate?: string | null;
+  endTime?: string | null;
+  endAt?: Timestamp | null;
+  /** Solo nelle agende condivise: chi ha creato la voce */
+  createdBy?: string;
+  createdByName?: string;
   completedAt: Timestamp | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
-export interface Item extends Omit<ItemDoc, 'startAt' | 'remindAt' | 'completedAt' | 'createdAt' | 'updatedAt'> {
+export interface Item extends Omit<ItemDoc, 'startAt' | 'endAt' | 'remindAt' | 'completedAt' | 'createdAt' | 'updatedAt'> {
   id: string;
+  /** null = agenda personale, altrimenti id dell'agenda condivisa */
+  agendaId: string | null;
   startAt: Date;
+  endAt: Date | null;
   remindAt: Date | null;
   completedAt: Date | null;
   createdAt: Date | null;
@@ -49,6 +59,8 @@ export interface Occurrence {
   date: string;
   startAt: Date;
   isRecurringInstance: boolean;
+  /** Giorno successivo al primo di un impegno su più giorni */
+  continued?: boolean;
 }
 
 export interface ItemInput {
@@ -57,6 +69,8 @@ export interface ItemInput {
   description: string;
   date: string;
   time: string | null;
+  endDate: string | null;
+  endTime: string | null;
   category: Category;
   priority: Priority;
   status: Status;
@@ -73,6 +87,18 @@ export interface UserProfile {
   timezone: string;
   notificationsEnabled: boolean;
   theme: ThemePref;
+  /** Agenda in cui finiscono i nuovi impegni (null = personale) */
+  defaultAgendaId?: string | null;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+}
+
+/** Documento Firestore: agendas/{agendaId} */
+export interface Agenda {
+  id: string;
+  name: string;
+  ownerId: string;
+  members: string[];
+  memberNames: Record<string, string>;
+  inviteCode: string;
 }

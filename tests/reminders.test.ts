@@ -38,10 +38,33 @@ describe('nextReminder (fuso Europe/Rome e ora legale)', () => {
 
   it('il messaggio contiene titolo, testo, ora e link al dettaglio', () => {
     const m = buildMessage('abc', { ...base, date: '2026-03-29', time: '10:00', recurrence: 'none', remindAt: null, startAt: null as never }, new Date('2026-03-29T07:45:00Z'));
-    expect(m.title).toBe('URGENTE · Chiamare il fornitore');
-    expect(m.body).toContain('domenica 29 marzo alle 10:00');
+    expect(m.title).toBe('Agendly · Urgente');
+    expect(m.body.split('\n')[0]).toBe('Chiamare il fornitore');
+    expect(m.body).toContain('Domenica 29 marzo, 10:00');
     expect(m.itemId).toBe('abc');
     expect(m.urgent).toBe('true');
+  });
+});
+
+describe('fine impegno e agende condivise', () => {
+  it('la notifica mostra l’intervallo orario', () => {
+    const m = buildMessage('abc', { ...base, priority: 'media', date: '2026-03-29', time: '10:00', endTime: '11:30', recurrence: 'none', remindAt: null, startAt: Timestamp.fromDate(new Date('2026-03-29T08:00:00Z')), endAt: Timestamp.fromDate(new Date('2026-03-29T09:30:00Z')) }, new Date('2026-03-29T07:45:00Z'), 'u', 'Famiglia');
+    expect(m.title).toBe('Agendly');
+    expect(m.body).toContain('10:00–11:30');
+    expect(m.body).toContain('Agenda: Famiglia');
+  });
+
+  it('le voci delle agende condivise notificano tutti i membri', async () => {
+    await db.doc('agendas/fam').set({ name: 'Famiglia', ownerId: 'alice', members: ['alice', 'bob'], memberNames: {}, inviteCode: 'x' });
+    await db.doc('users/alice/fcmTokens/ta').set({ token: 'ta' });
+    await db.doc('users/bob/fcmTokens/tb').set({ token: 'tb' });
+    await db.doc('agendas/fam/items/s').set({ ...base, date: '2026-03-29', time: '10:00', recurrence: 'none', remindAt: Timestamp.fromDate(new Date('2026-03-29T07:45:00Z')) });
+    const send = vi.fn(async ({ tokens }: { tokens: string[] }) => ({ successCount: tokens.length, responses: tokens.map(() => ({ success: true })) }));
+    const r = await processDueReminders(db, { sendEachForMulticast: send } as never, new Date('2026-03-29T07:46:00Z'));
+    expect(r.sent).toBe(2);
+    const calls = send.mock.calls.map((c) => (c[0] as unknown as { data: Record<string, string> }).data);
+    expect(calls.map((d) => d.uid).sort()).toEqual(['alice', 'bob']);
+    expect(calls[0].body).toContain('Agenda: Famiglia');
   });
 });
 
@@ -93,7 +116,7 @@ describe('processDueReminders', () => {
     expect(result.sent).toBe(2);
     expect(send).toHaveBeenCalledTimes(2);
     const first = send.mock.calls[0][0] as unknown as { data: Record<string, string>; webpush: { headers: Record<string, string> } };
-    expect(first.data.title).toContain('Chiamare il fornitore');
+    expect(first.data.itemTitle).toBe('Chiamare il fornitore');
     expect((await user.collection('fcmTokens').doc('bad').get()).exists).toBe(false);
     expect((await user.collection('items').doc('once').get()).get('remindAt')).toBeNull();
     const daily = (await user.collection('items').doc('daily').get()).get('remindAt') as Timestamp;

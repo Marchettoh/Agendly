@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Bell, CalendarClock, CalendarDays, Check, Clock, Pencil, Repeat, RotateCcw, Tag, Trash2 } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, Check, Clock, Pencil, Repeat, RotateCcw, Tag, Trash2, Users } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -37,7 +37,7 @@ function Row({ icon, label, children }: { icon: ReactNode; label: string; childr
 export default function ItemDetailPage() {
   const { id = '' } = useParams();
   const { user } = useAuth();
-  const { getItem, itemsLoading, timezone } = useData();
+  const { getItem, itemsLoading, timezone, agendaName } = useData();
   const toast = useToast();
   const navigate = useNavigate();
   const { toggle, move, busyId } = useItemActions();
@@ -72,7 +72,7 @@ export default function ItemDetailPage() {
     if (!user) return;
     setDeleting(true);
     try {
-      await deleteItem(user.uid, item.id);
+      await deleteItem(user.uid, item);
       toast.success('Impegno eliminato');
       navigate('/', { replace: true });
     } catch (e) {
@@ -113,6 +113,15 @@ export default function ItemDetailPage() {
           <Row icon={<Clock className="h-5 w-5" />} label="Ora">
             {item.time ? `${item.time}${item.timezone !== timezone ? ` (${item.timezone})` : ''}` : 'In giornata, senza orario'}
             {item.timezone !== timezone && item.time && <span className="block text-sm text-slate-500">Nel tuo fuso: {formatInTz(item.startAt, timezone, 'HH:mm')}</span>}
+          </Row>
+          {item.endAt && (
+            <Row icon={<Clock className="h-5 w-5" />} label="Fine">
+              {capitalize(formatInTz(item.endAt, timezone, item.endTime ? (item.endDate ? "EEEE d MMMM 'alle' HH:mm" : 'HH:mm') : 'EEEE d MMMM yyyy'))}
+            </Row>
+          )}
+          <Row icon={<Users className="h-5 w-5" />} label="Agenda">
+            {agendaName(item.agendaId) ?? 'Personale'}
+            {item.createdByName && <span className="block text-sm text-slate-500">Aggiunto da {item.createdByName}</span>}
           </Row>
           <Row icon={<CategoryIcon category={item.category} className="h-5 w-5" />} label="Categoria">
             {CATEGORY_LABELS[item.category]}

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, getDocs, collection, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, deleteDoc, deleteField, doc, getDoc, getDocs, collection, query, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 let env: RulesTestEnvironment;
 
@@ -66,6 +66,8 @@ describe('Firestore rules', () => {
     await assertFails(setDoc(doc(db, 'users/alice/items/c'), item({ date: '29/03/2026' })));
     await assertFails(setDoc(doc(db, 'users/alice/items/d'), item({ owner: 'bob' })));
     await assertFails(setDoc(doc(db, 'users/alice/items/e'), item({ reminderMinutes: -5 })));
+    await assertFails(setDoc(doc(db, 'users/alice/items/f'), item({ endDate: '2026-03-28' })));
+    await assertSucceeds(setDoc(doc(db, 'users/alice/items/g'), item({ endDate: '2026-03-30', endTime: '18:00', endAt: Timestamp.now() })));
   });
 
   it('profilo e token FCM: solo il proprietario', async () => {
@@ -78,5 +80,34 @@ describe('Firestore rules', () => {
     await assertSucceeds(setDoc(doc(alice, 'users/alice/fcmTokens/tok1'), { token: 'tok1', userAgent: 'test' }));
     await assertFails(setDoc(doc(alice, 'users/alice/fcmTokens/tok2'), { token: 'altro', userAgent: 'test' }));
     await assertFails(getDoc(doc(bob, 'users/alice/fcmTokens/tok1')));
+  });
+
+  it('agende condivise: accesso solo ai membri, ingresso solo con il codice di invito', async () => {
+    const code = 'c'.repeat(32);
+    const alice = env.authenticatedContext('alice').firestore();
+    const bob = env.authenticatedContext('bob').firestore();
+    const batch = writeBatch(alice);
+    batch.set(doc(alice, 'agendas/fam'), { name: 'Famiglia', ownerId: 'alice', members: ['alice'], memberNames: { alice: 'Alice' }, inviteCode: code });
+    batch.set(doc(alice, `agendaInvites/${code}`), { agendaId: 'fam', name: 'Famiglia', ownerName: 'Alice' });
+    await assertSucceeds(batch.commit());
+    await assertSucceeds(setDoc(doc(alice, 'agendas/fam/items/1'), item({ createdBy: 'alice' })));
+
+    await assertFails(getDoc(doc(bob, 'agendas/fam')));
+    await assertFails(getDoc(doc(bob, 'agendas/fam/items/1')));
+    await assertFails(setDoc(doc(bob, 'agendas/altra'), { name: 'X', ownerId: 'alice', members: ['alice'], memberNames: {}, inviteCode: code }));
+    await assertSucceeds(getDoc(doc(bob, `agendaInvites/${code}`)));
+    await assertFails(getDocs(collection(bob, 'agendaInvites')));
+
+    await assertFails(updateDoc(doc(bob, 'agendas/fam'), { members: arrayUnion('bob'), 'memberNames.bob': 'Bob', joinCode: 'sbagliato'.padEnd(32, 'x') }));
+    await assertSucceeds(updateDoc(doc(bob, 'agendas/fam'), { members: arrayUnion('bob'), 'memberNames.bob': 'Bob', joinCode: code }));
+    await assertSucceeds(getDoc(doc(bob, 'agendas/fam/items/1')));
+    await assertSucceeds(getDocs(query(collection(bob, 'agendas'), where('members', 'array-contains', 'bob'))));
+    await assertSucceeds(setDoc(doc(bob, 'agendas/fam/items/2'), item({ createdBy: 'bob' })));
+    await assertFails(setDoc(doc(bob, 'agendas/fam/items/3'), item({ createdBy: 'alice' })));
+    await assertFails(updateDoc(doc(bob, 'agendas/fam'), { name: 'Mia' }));
+    await assertFails(updateDoc(doc(bob, 'agendas/fam'), { members: arrayRemove('alice'), 'memberNames.alice': deleteField() }));
+
+    await assertSucceeds(updateDoc(doc(bob, 'agendas/fam'), { members: arrayRemove('bob'), 'memberNames.bob': deleteField() }));
+    await assertFails(getDoc(doc(bob, 'agendas/fam/items/1')));
   });
 });

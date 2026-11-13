@@ -7,6 +7,9 @@ import App from './App';
 
 registerSW({ immediate: true });
 
+// iOS ignora user-scalable=no: blocca il pinch-zoom anche lì.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

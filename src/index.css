@@ -6,6 +6,15 @@
   html {
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+  /* iOS ingrandisce la pagina quando un campo ha testo sotto i 16px */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
   body {
     @apply bg-surface font-sans text-ink antialiased dark:bg-night dark:text-slate-100;

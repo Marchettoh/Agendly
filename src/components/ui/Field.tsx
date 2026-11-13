@@ -2,7 +2,7 @@ import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type Selec
 import clsx from 'clsx';
 
 const base =
-  'w-full rounded-xl border border-slate-200 bg-white px-4 text-[15px] text-ink placeholder:text-slate-400 transition focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 dark:border-night-border dark:bg-night dark:text-slate-100 dark:placeholder:text-slate-500';
+  'w-full rounded-xl border border-slate-200 bg-white px-4 text-base text-ink md:text-[15px] placeholder:text-slate-400 transition focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15 dark:border-night-border dark:bg-night dark:text-slate-100 dark:placeholder:text-slate-500';
 
 interface FieldWrapProps {
   label?: string;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { AlarmClock, CalendarDays, ChevronDown, ListTodo } from 'lucide-react';
+import { AlarmClock, CalendarDays, ChevronDown, ListTodo, User, Users } from 'lucide-react';
 import clsx from 'clsx';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -25,7 +25,7 @@ import {
   STATUSES,
   STATUS_LABELS,
 } from '../lib/labels';
-import { todayKey } from '../lib/time';
+import { addDaysKey, diffDaysKey, todayKey } from '../lib/time';
 import type { ItemInput, ItemType } from '../lib/types';
 
 const TYPE_OPTIONS: { value: ItemType; label: string; icon: JSX.Element }[] = [
@@ -45,12 +45,19 @@ function defaults(type: ItemType, date: string): ItemInput {
     description: '',
     date,
     time: type === 'evento' ? '09:00' : null,
+    endDate: null,
+    endTime: null,
     category: 'personale',
     priority: 'media',
     status: 'da_fare',
     reminderMinutes: type === 'attivita' ? null : 15,
     recurrence: 'none',
   };
+}
+
+function plusOneHour(t: string): string {
+  const [h, m] = t.split(':').map(Number);
+  return `${String(Math.min(23, h + 1)).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function splitCustom(minutes: number): { amount: number; unit: CustomUnit } {
@@ -63,7 +70,7 @@ export default function ItemFormPage() {
   const { id } = useParams();
   const [params] = useSearchParams();
   const { user } = useAuth();
-  const { getItem, itemsLoading, timezone } = useData();
+  const { getItem, itemsLoading, timezone, profile, agendas, defaultAgendaId, agendaName } = useData();
   const toast = useToast();
   const navigate = useNavigate();
   const editing = id ? getItem(id) : undefined;
@@ -71,6 +78,8 @@ export default function ItemFormPage() {
 
   const [form, setForm] = useState<ItemInput>(() => defaults(initialType, params.get('data') ?? todayKey(timezone)));
   const [hasTime, setHasTime] = useState(initialType === 'evento');
+  const [hasEnd, setHasEnd] = useState(false);
+  const [agendaChoice, setAgendaChoice] = useState<string>(() => params.get('agenda') ?? defaultAgendaId ?? 'personal');
   const [reminder, setReminder] = useState<ReminderChoice>(initialType === 'attivita' ? 'none' : '15');
   const [custom, setCustom] = useState<{ amount: number; unit: CustomUnit }>({ amount: 2, unit: 'ore' });
   const [showMore, setShowMore] = useState(false);
@@ -83,6 +92,7 @@ export default function ItemFormPage() {
     const input = toInput(editing);
     setForm(input);
     setHasTime(input.time !== null);
+    setHasEnd(!!(input.endDate || input.endTime));
     if (input.reminderMinutes === null) setReminder('none');
     else if (REMINDER_PRESETS.some((p) => p.value === input.reminderMinutes)) setReminder(`${input.reminderMinutes}`);
     else {
@@ -124,11 +134,23 @@ export default function ItemFormPage() {
     if (!form.title.trim()) errs.title = 'Inserisci un titolo.';
     if (!form.date) errs.date = 'Scegli una data.';
     if (hasTime && !form.time) errs.time = 'Scegli un orario o disattiva “Orario preciso”.';
+    if (hasEnd) {
+      const endDate = form.endDate ?? form.date;
+      if (endDate < form.date) errs.end = 'La fine non può essere prima dell’inizio.';
+      else if (endDate === form.date && hasTime && form.time && form.endTime && form.endTime <= form.time) errs.end = 'L’ora di fine deve essere dopo l’ora di inizio.';
+    }
     if (reminder === 'custom' && (!custom.amount || custom.amount <= 0)) errs.reminder = 'Indica un anticipo valido.';
     setErrors(errs);
     if (Object.keys(errs).length || !user) return;
 
-    const input: ItemInput = { ...form, time: hasTime ? form.time : null, reminderMinutes };
+    const input: ItemInput = {
+      ...form,
+      time: hasTime ? form.time : null,
+      endDate: hasEnd ? (form.endDate ?? form.date) : null,
+      endTime: hasEnd ? form.endTime : null,
+      reminderMinutes,
+    };
+    const agendaId = agendas.some((a) => a.id === agendaChoice) ? agendaChoice : null;
     setSaving(true);
     try {
       if (editing) {
@@ -136,8 +158,9 @@ export default function ItemFormPage() {
         toast.success('Modifiche salvate');
         navigate(`/voce/${editing.id}`, { replace: true });
       } else {
-        const newId = await createItem(user.uid, input, timezone);
-        toast.success('Impegno aggiunto', { label: 'Vedi', onClick: () => navigate(`/voce/${newId}`) });
+        const authorName = profile?.displayName || user.displayName || user.email || '';
+        const newId = await createItem(user.uid, input, timezone, agendaId ? { id: agendaId, authorName } : undefined);
+        toast.success(agendaId ? `Aggiunto in ${agendaName(agendaId)}` : 'Impegno aggiunto', { label: 'Vedi', onClick: () => navigate(`/voce/${newId}`) });
         navigate(-1);
       }
     } catch (err) {
@@ -151,6 +174,25 @@ export default function ItemFormPage() {
     <form onSubmit={submit} noValidate className="pb-28 md:pb-0">
       <PageHeader title={editing ? 'Modifica' : 'Nuovo impegno'} back />
       <div className="space-y-5">
+        {editing
+          ? editing.agendaId && (
+              <p className="flex items-center gap-2 text-sm font-medium text-brand">
+                <Users className="h-4 w-4" /> Agenda: {agendaName(editing.agendaId)}
+              </p>
+            )
+          : agendas.length > 0 && (
+              <ChipGroup
+                label="Agenda"
+                value={agendas.some((a) => a.id === agendaChoice) ? agendaChoice : 'personal'}
+                onChange={setAgendaChoice}
+                scroll
+                options={[
+                  { value: 'personal', label: 'Personale', icon: <User className="h-4 w-4" /> },
+                  ...agendas.map((a) => ({ value: a.id, label: a.name, icon: <Users className="h-4 w-4" /> })),
+                ]}
+              />
+            )}
+
         <ChipGroup label="Tipo" value={form.type} options={TYPE_OPTIONS} onChange={changeType} />
 
         <Input
@@ -165,7 +207,16 @@ export default function ItemFormPage() {
         />
 
         <div className="grid grid-cols-2 gap-3">
-          <Input label={form.type === 'evento' ? 'Data' : 'Scadenza'} type="date" value={form.date} onChange={(e) => set('date', e.target.value)} error={errors.date} />
+          <Input
+            label={form.type === 'evento' ? 'Data' : 'Scadenza'}
+            type="date"
+            value={form.date}
+            onChange={(e) => {
+              const date = e.target.value;
+              setForm((f) => ({ ...f, date, endDate: f.endDate && date ? addDaysKey(date, Math.max(0, diffDaysKey(f.endDate, f.date))) : f.endDate }));
+            }}
+            error={errors.date}
+          />
           {hasTime ? (
             <Input label="Ora" type="time" value={form.time ?? ''} onChange={(e) => set('time', e.target.value || null)} error={errors.time} />
           ) : (
@@ -196,6 +247,36 @@ export default function ItemFormPage() {
             }}
           >
             Rimuovi orario (solo scadenza)
+          </button>
+        )}
+
+        {hasEnd ? (
+          <div className="-mt-1 space-y-1.5">
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Data fine" type="date" min={form.date} value={form.endDate ?? form.date} onChange={(e) => set('endDate', e.target.value || null)} error={errors.end} />
+              <Input label="Ora fine" type="time" value={form.endTime ?? ''} onChange={(e) => set('endTime', e.target.value || null)} />
+            </div>
+            <button
+              type="button"
+              className="text-sm font-medium text-slate-500 hover:text-brand"
+              onClick={() => {
+                setHasEnd(false);
+                setForm((f) => ({ ...f, endDate: null, endTime: null }));
+              }}
+            >
+              Rimuovi fine
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="-mt-2 text-sm font-semibold text-brand"
+            onClick={() => {
+              setHasEnd(true);
+              setForm((f) => ({ ...f, endDate: f.date, endTime: hasTime && f.time ? plusOneHour(f.time) : null }));
+            }}
+          >
+            + Aggiungi data e ora di fine
           </button>
         )}
 

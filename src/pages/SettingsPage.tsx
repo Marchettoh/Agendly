@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, ChevronRight, Globe, LogOut, Moon, Smartphone, User } from 'lucide-react';
+import { Bell, ChevronRight, Globe, LogOut, Moon, Smartphone, User, Users } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
@@ -31,7 +31,7 @@ function SectionTitle({ icon, children }: { icon: ReactNode; children: ReactNode
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const { profile, timezone } = useData();
+  const { profile, timezone, agendas, defaultAgendaId, agendaName } = useData();
   const { theme, setTheme } = useTheme();
   const toast = useToast();
   const push = usePushState();
@@ -82,6 +82,17 @@ export default function SettingsPage() {
         </div>
         <Input label="Email" value={user?.email ?? ''} readOnly disabled />
       </Card>
+
+      <SectionTitle icon={<Users className="h-4 w-4" />}>Agende condivise</SectionTitle>
+      <Link to="/agende">
+        <Card className="flex items-center gap-3 p-5 transition hover:border-brand/30">
+          <div className="flex-1">
+            <p className="font-medium text-ink dark:text-slate-100">{agendas.length ? `${agendas.length} ${agendas.length === 1 ? 'agenda condivisa' : 'agende condivise'}` : 'Condividi con la famiglia'}</p>
+            <p className="text-sm text-slate-500">Nuovi impegni in: {agendaName(defaultAgendaId) ?? 'Personale'}</p>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-400" />
+        </Card>
+      </Link>
 
       <SectionTitle icon={<Globe className="h-4 w-4" />}>Fuso orario</SectionTitle>
       <Card className="p-5">
