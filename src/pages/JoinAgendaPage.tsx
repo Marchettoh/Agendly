@@ -70,9 +70,13 @@ export default function JoinAgendaPage() {
           </Link>
         ) : (
           <>
-            <div className="my-6 text-left">
-              <Toggle checked={makeDefault} onChange={setMakeDefault} label="Aggiungi i nuovi impegni in questa agenda" />
-            </div>
+            <label className="my-6 flex items-center justify-between gap-3 text-left text-sm text-ink dark:text-slate-200">
+              <span>
+                <span className="block font-medium">Usala come agenda predefinita</span>
+                <span className="text-slate-500">I nuovi impegni verranno aggiunti qui</span>
+              </span>
+              <Toggle checked={makeDefault} onChange={setMakeDefault} label="Usala come agenda predefinita" />
+            </label>
             <Button block size="lg" loading={joining} onClick={join}>
               Unisciti
             </Button>

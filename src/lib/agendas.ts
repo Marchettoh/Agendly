@@ -36,7 +36,13 @@ export function subscribeAgendas(uid: string, onData: (agendas: Agenda[]) => voi
   const q = query(collection(db(), 'agendas'), where('members', 'array-contains', uid));
   return onSnapshot(
     q,
-    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Agenda, 'id'>) })).sort((a, b) => a.name.localeCompare(b.name, 'it'))),
+    { includeMetadataChanges: true },
+    (snap) =>
+      onData(
+        snap.docs
+          .map((d) => ({ ...(d.data() as Omit<Agenda, 'id' | 'pending'>), id: d.id, pending: d.metadata.hasPendingWrites }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'it')),
+      ),
     onError,
   );
 }

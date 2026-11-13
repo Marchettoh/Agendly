@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { subscribeAgendaItems, subscribeItems } from '../lib/items';
 import { subscribeAgendas } from '../lib/agendas';
@@ -63,7 +63,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const agendaIds = agendas.map((a) => a.id).join(',');
+  // Le voci di un'agenda appena creata sono leggibili solo dopo la conferma del server.
+  const agendaIds = agendas
+    .filter((a) => !a.pending)
+    .map((a) => a.id)
+    .join(',');
+  const [retryTick, setRetryTick] = useState(0);
+  const retries = useRef(0);
   useEffect(() => {
     if (!agendaIds) {
       setShared({});
@@ -71,15 +77,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const ids = agendaIds.split(',');
     setShared((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => ids.includes(id))));
+    const timers: ReturnType<typeof setTimeout>[] = [];
     const unsubs = ids.map((id) =>
       subscribeAgendaItems(
         id,
-        (list) => setShared((prev) => ({ ...prev, [id]: list })),
-        (e) => console.error('Agenda condivisa non disponibile', id, e),
+        (list) => {
+          retries.current = 0;
+          setShared((prev) => ({ ...prev, [id]: list }));
+        },
+        (e) => {
+          console.error('Agenda condivisa non disponibile', id, e);
+          if (retries.current++ < 5) timers.push(setTimeout(() => setRetryTick((t) => t + 1), 2000 * retries.current));
+        },
       ),
     );
-    return () => unsubs.forEach((u) => u());
-  }, [agendaIds]);
+    return () => {
+      unsubs.forEach((u) => u());
+      timers.forEach(clearTimeout);
+    };
+  }, [agendaIds, retryTick]);
 
   const value = useMemo<DataApi>(() => {
     const items = [...personal, ...Object.values(shared).flat()].sort((a, b) => a.startAt.getTime() - b.startAt.getTime());

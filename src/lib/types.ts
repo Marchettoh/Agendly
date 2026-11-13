@@ -101,4 +101,6 @@ export interface Agenda {
   members: string[];
   memberNames: Record<string, string>;
   inviteCode: string;
+  /** Scrittura locale non ancora confermata dal server */
+  pending?: boolean;
 }
