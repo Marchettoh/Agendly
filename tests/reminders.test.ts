@@ -38,8 +38,8 @@ describe('nextReminder (fuso Europe/Rome e ora legale)', () => {
 
   it('il messaggio contiene titolo, testo, ora e link al dettaglio', () => {
     const m = buildMessage('abc', { ...base, date: '2026-03-29', time: '10:00', recurrence: 'none', remindAt: null, startAt: null as never }, new Date('2026-03-29T07:45:00Z'));
-    expect(m.title).toBe('Agendly · Urgente');
-    expect(m.body.split('\n')[0]).toBe('Chiamare il fornitore');
+    expect(m.title).toBe('Urgente · Chiamare il fornitore');
+    expect(m.body.split('\n')[0]).toBe('Domenica 29 marzo, 10:00');
     expect(m.body).toContain('Domenica 29 marzo, 10:00');
     expect(m.itemId).toBe('abc');
     expect(m.urgent).toBe('true');
@@ -49,7 +49,7 @@ describe('nextReminder (fuso Europe/Rome e ora legale)', () => {
 describe('fine impegno e agende condivise', () => {
   it('la notifica mostra l’intervallo orario', () => {
     const m = buildMessage('abc', { ...base, priority: 'media', date: '2026-03-29', time: '10:00', endTime: '11:30', recurrence: 'none', remindAt: null, startAt: Timestamp.fromDate(new Date('2026-03-29T08:00:00Z')), endAt: Timestamp.fromDate(new Date('2026-03-29T09:30:00Z')) }, new Date('2026-03-29T07:45:00Z'), 'u', 'Famiglia');
-    expect(m.title).toBe('Agendly');
+    expect(m.title).toBe('Chiamare il fornitore');
     expect(m.body).toContain('10:00–11:30');
     expect(m.body).toContain('Agenda: Famiglia');
   });

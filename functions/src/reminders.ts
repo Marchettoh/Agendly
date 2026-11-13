@@ -64,7 +64,7 @@ function occurrenceFor(item: ItemData, remindAt: Date): { date: string; start: D
   return { date, start: fromZonedTime(`${date}T${item.time ?? '00:00'}:00`, item.timezone) };
 }
 
-/** Notifica: "Agendly" come titolo, sotto nome dell'impegno, orario, agenda e descrizione. */
+/** Notifica: il sistema mostra già "Agendly" in alto; titolo = impegno, sotto orario, agenda e descrizione. */
 export function buildMessage(id: string, item: ItemData, remindAt: Date, uid = '', agendaName?: string) {
   const { start } = occurrenceFor(item, remindAt);
   const tz = item.timezone;
@@ -78,8 +78,8 @@ export function buildMessage(id: string, item: ItemData, remindAt: Date, uid = '
   when = when.charAt(0).toUpperCase() + when.slice(1);
   const urgent = item.priority === 'urgente';
   return {
-    title: urgent ? 'Agendly · Urgente' : 'Agendly',
-    body: [item.title, when, agendaName ? `Agenda: ${agendaName}` : '', item.description?.slice(0, 120) ?? ''].filter(Boolean).join('\n'),
+    title: urgent ? `Urgente · ${item.title}` : item.title,
+    body: [when, agendaName ? `Agenda: ${agendaName}` : '', item.description?.slice(0, 120) ?? ''].filter(Boolean).join('\n'),
     itemTitle: item.title,
     itemId: id,
     uid,

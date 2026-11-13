@@ -10,7 +10,7 @@ import type { Item } from '../lib/types';
 const MAX_TIMEOUT = 2_147_000_000;
 const shownTags = new Set<string>();
 
-/** Stesso formato delle push del server: "Agendly" in alto, sotto nome e dettagli dell'impegno. */
+/** Stesso formato delle push del server: titolo = impegno, sotto orario, agenda e descrizione. */
 export function notificationText(item: Item, tz: string, agendaName?: string | null) {
   let when = item.time ? formatInTz(item.startAt, tz, 'EEEE d MMMM, HH:mm') : `${formatInTz(item.startAt, tz, 'EEEE d MMMM')} (in giornata)`;
   if (item.endAt) {
@@ -18,8 +18,8 @@ export function notificationText(item: Item, tz: string, agendaName?: string | n
     else if (item.endTime) when += `–${formatInTz(item.endAt, tz, 'HH:mm')}`;
   }
   return {
-    title: item.priority === 'urgente' ? 'Agendly · Urgente' : 'Agendly',
-    body: [item.title, capitalize(when), agendaName ? `Agenda: ${agendaName}` : '', item.description.slice(0, 120)].filter(Boolean).join('\n'),
+    title: item.priority === 'urgente' ? `Urgente · ${item.title}` : item.title,
+    body: [capitalize(when), agendaName ? `Agenda: ${agendaName}` : '', item.description.slice(0, 120)].filter(Boolean).join('\n'),
   };
 }
 

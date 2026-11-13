@@ -61,7 +61,7 @@ export default function NotificationsPage() {
   };
 
   const test = () =>
-    showLocalNotification({ title: 'Agendly · Notifica di prova', body: 'Le notifiche funzionano correttamente.', itemId: '', tag: `test-${Date.now()}` }).then(() =>
+    showLocalNotification({ title: 'Notifica di prova', body: 'Le notifiche funzionano correttamente.', itemId: '', tag: `test-${Date.now()}` }).then(() =>
       toast.success('Notifica di prova inviata'),
     );
 
