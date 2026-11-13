@@ -35,6 +35,20 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <DataProvider>{children}</DataProvider>;
 }
 
+/**
+ * iOS apre la web app dall'URL in cui è stata aggiunta alla Home: se era /benvenuto,
+ * chi è già connesso (o ha già visto la presentazione) non deve rivederla a ogni avvio.
+ */
+function OnboardingGate() {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <SplashScreen />;
+  if (user) return <Navigate to="/" replace />;
+  const replay = (location.state as { replay?: boolean } | null)?.replay;
+  if (!replay && localStorage.getItem(ONBOARDING_KEY) === '1') return <Navigate to="/accedi" replace />;
+  return <OnboardingPage />;
+}
+
 function PublicOnly({ children }: { children: ReactNode }) {
   const { loading } = useAuth();
   return loading ? <SplashScreen /> : <>{children}</>;
@@ -49,7 +63,7 @@ export default function App() {
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                <Route path="/benvenuto" element={<OnboardingPage />} />
+                <Route path="/benvenuto" element={<OnboardingGate />} />
                 <Route path="/accedi" element={<PublicOnly><AuthPage /></PublicOnly>} />
                 <Route path="/registrati" element={<PublicOnly><AuthPage /></PublicOnly>} />
                 <Route

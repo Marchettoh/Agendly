@@ -135,7 +135,7 @@ export default function AuthPage() {
             Continua con Google
           </Button>
           <p className="text-center text-xs text-slate-500">
-            <Link to="/benvenuto" className="hover:underline">
+            <Link to="/benvenuto" state={{ replay: true }} className="hover:underline">
               Rivedi la presentazione
             </Link>
           </p>
