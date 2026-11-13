@@ -13,6 +13,7 @@ import {
 import { getFirebase, googleProvider } from '../lib/firebase';
 import { ensureProfile } from '../lib/profile';
 import { disablePush, isStandalone, setPushSession } from '../lib/messaging';
+import { ONBOARDING_KEY } from '../pages/OnboardingPage';
 
 interface AuthApi {
   user: User | null;
@@ -33,7 +34,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { auth } = getFirebase();
     return onAuthStateChanged(auth, async (u) => {
-      if (u) await ensureProfile(u).catch(console.error);
+      if (u) {
+        localStorage.setItem(ONBOARDING_KEY, '1');
+        await ensureProfile(u).catch(console.error);
+      }
       setPushSession(u?.uid ?? null).catch(console.error);
       setUser(u);
       setLoading(false);

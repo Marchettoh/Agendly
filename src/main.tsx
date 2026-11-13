@@ -7,6 +7,9 @@ import App from './App';
 
 registerSW({ immediate: true });
 
+// Chiede al browser di non cancellare sessione e dati offline quando lo spazio scarseggia.
+navigator.storage?.persist?.().catch(() => undefined);
+
 // iOS ignora user-scalable=no: blocca il pinch-zoom anche lì.
 document.addEventListener('gesturestart', (e) => e.preventDefault());
 
