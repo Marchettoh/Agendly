@@ -47,6 +47,7 @@ export const isDone = (item: Item) => item.status === 'completato';
 
 export function isOverdue(item: Item, tz: string, now = new Date()): boolean {
   if (isDone(item)) return false;
+  if (item.endAt) return item.endAt.getTime() < now.getTime();
   if (item.time) return item.startAt.getTime() < now.getTime();
   return item.date < todayKey(tz);
 }
